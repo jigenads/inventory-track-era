@@ -486,20 +486,7 @@
   }
   .empty-state svg { margin-bottom: 12px; opacity: .4; }
 
-  /* ── FIREBASE STATUS ─────────────────────────── */
-  .fb-status-bar {
-    display: flex; align-items: center; gap: 8px;
-    padding: 8px 20px;
-    background: var(--surface2);
-    border-bottom: 1px solid var(--border);
-    font-size: 11px; font-weight: 700;
-    font-family: 'Space Mono', monospace;
-  }
-  .fb-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
-  .fb-connected { background: var(--accent); box-shadow: 0 0 6px var(--accent); }
-  .fb-disconnected { background: var(--accent2); }
-  .fb-syncing { background: #ffd166; animation: pulse 1s infinite; }
-  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.4} }
+  /* ── FIREBASE STATUS (handled by header indicator) ─────────────────────────── */
   .fb-setup-card { border-color: #ff9500; background: rgba(255,149,0,.06); }
   .fb-step {
     display: flex; gap: 12px; align-items: flex-start;
@@ -613,13 +600,6 @@
     Pengaturan
   </button>
 </nav>
-
-<!-- Firebase Status Bar -->
-<div class="fb-status-bar" id="fb-status-bar">
-  <div class="fb-dot fb-disconnected" id="fb-dot"></div>
-  <span id="fb-status-text">Firebase belum dikonfigurasi — data tersimpan lokal</span>
-  <span style="margin-left:auto;color:var(--text2);cursor:pointer;" onclick="showPanel('settings',document.querySelector('nav button:nth-child(5)'))">Setup →</span>
-</div>
 
 <!-- ══ DASHBOARD ══ -->
 <div id="panel-dash" class="panel active">
@@ -811,6 +791,27 @@
       <div id="fb-connect-msg" style="margin-top:8px;font-size:12px;display:none;padding:8px 10px;border-radius:8px;"></div>
     </div>
 
+    <!-- Generate Share Link -->
+    <div style="margin-top:16px;padding-top:16px;border-top:1px solid var(--border);">
+      <div style="font-size:13px;font-weight:700;margin-bottom:6px;">📲 Link Toko — Share ke Karyawan</div>
+      <div style="font-size:11px;color:var(--text2);margin-bottom:10px;">
+        Setelah terhubung, generate link khusus toko Anda. Karyawan cukup buka link ini sekali — langsung terhubung otomatis tanpa perlu isi config.
+      </div>
+      <button class="btn btn-primary" onclick="generateShareLink()" id="gen-link-btn" style="margin-bottom:10px;">🔗 Generate Link Toko</button>
+      <div id="share-link-box" style="display:none;">
+        <div class="copy-box" style="flex-wrap:wrap;gap:6px;">
+          <span id="share-link-text" style="font-size:10px;word-break:break-all;color:var(--accent);"></span>
+          <div style="display:flex;gap:6px;width:100%;">
+            <button onclick="copyShareLink()" style="flex:1;padding:6px;border-radius:6px;background:var(--accent);color:#000;border:none;font-weight:700;font-size:12px;cursor:pointer;">📋 Copy Link</button>
+            <button onclick="shareLink()" style="flex:1;padding:6px;border-radius:6px;background:var(--surface2);color:var(--text);border:1px solid var(--border);font-weight:700;font-size:12px;cursor:pointer;">↗ Share</button>
+          </div>
+        </div>
+        <div style="font-size:11px;color:var(--text2);margin-top:8px;">
+          ⚠️ Link ini mengandung config Firebase. Jangan share ke orang luar toko.
+        </div>
+      </div>
+    </div>
+
     <details style="margin-top:12px;">
       <summary style="cursor:pointer;font-size:12px;color:#ff9500;font-weight:700;">⚙️ Aturan Keamanan Database →</summary>
       <div style="font-size:11px;color:var(--text2);margin-top:8px;margin-bottom:6px;">Paste aturan ini di Firebase Console → Realtime Database → Rules:</div>
@@ -932,6 +933,80 @@ let fbListening = false;
 function getFbConfig() {
   try { return JSON.parse(localStorage.getItem('invtrack_fb_config') || 'null'); } catch(e) { return null; }
 }
+
+// ── Auto-configure from URL hash (for share links) ──
+function checkUrlConfig() {
+  try {
+    const hash = window.location.hash;
+    if (!hash || !hash.startsWith('#fb=')) return false;
+    const encoded = hash.slice(4);
+    const decoded = JSON.parse(atob(encoded));
+    if (!decoded.apiKey || !decoded.databaseURL) return false;
+
+    // Save config locally
+    localStorage.setItem('invtrack_fb_config', JSON.stringify(decoded));
+
+    // Clean URL without reloading
+    history.replaceState(null, '', window.location.pathname);
+
+    // Show friendly message after app loads
+    setTimeout(() => {
+      toast('🔥 Config toko diterima! Menghubungkan...');
+    }, 1200);
+
+    return decoded;
+  } catch(e) {
+    return false;
+  }
+}
+
+// ── Generate shareable link with embedded config ──
+function generateShareLink() {
+  const cfg = getFbConfig();
+  if (!cfg || !cfg.apiKey) {
+    showFbMsg('error', '❌ Sambungkan Firebase dulu sebelum generate link!');
+    return;
+  }
+  if (!fbReady) {
+    showFbMsg('error', '❌ Pastikan status Firebase sudah Terhubung!');
+    return;
+  }
+  // Encode config as base64
+  const encoded = btoa(JSON.stringify(cfg));
+  const url = window.location.origin + window.location.pathname + '#fb=' + encoded;
+
+  document.getElementById('share-link-text').textContent = url;
+  document.getElementById('share-link-box').style.display = 'block';
+}
+
+function copyShareLink() {
+  const url = document.getElementById('share-link-text').textContent;
+  navigator.clipboard.writeText(url)
+    .then(() => toast('✅ Link berhasil disalin! Share ke karyawan.'))
+    .catch(() => {
+      // Fallback
+      const el = document.getElementById('share-link-text');
+      const range = document.createRange();
+      range.selectNode(el);
+      window.getSelection().removeAllRanges();
+      window.getSelection().addRange(range);
+      document.execCommand('copy');
+      toast('✅ Link disalin!');
+    });
+}
+
+function shareLink() {
+  const url = document.getElementById('share-link-text').textContent;
+  if (navigator.share) {
+    navigator.share({
+      title: 'InvTrack — Link Toko',
+      text: 'Buka link ini untuk mengakses sistem inventori toko.',
+      url: url
+    }).catch(() => {});
+  } else {
+    copyShareLink();
+  }
+}
 function saveFbConfig() {
   const cfg = {
     apiKey:      (document.getElementById('fb-apiKey').value || '').trim(),
@@ -989,24 +1064,21 @@ function testFbConnection() {
 }
 
 function setFbStatus(status) {
-  const dot  = document.getElementById('fb-dot');
-  const text = document.getElementById('fb-status-text');
+  const ind  = document.getElementById('gs-indicator');
   const card = document.getElementById('fb-card-status');
-  const bar  = document.getElementById('fb-status-bar');
-  if (!dot) return;
-  dot.className = 'fb-dot';
+  const genBtn = document.getElementById('gen-link-btn');
+
   if (status === 'connected') {
-    dot.classList.add('fb-connected');
-    if (text) text.textContent = '🔥 Firebase terhubung — sync real-time aktif';
+    if (ind)  { ind.className = 'gs-status gs-connected'; ind.textContent = '🔥 Live'; }
     if (card) { card.textContent = '● Terhubung'; card.style.background = 'rgba(0,229,160,.2)'; card.style.color = 'var(--accent)'; }
-    if (bar) bar.style.borderBottom = '1px solid rgba(0,229,160,.3)';
+    if (genBtn) { genBtn.style.opacity = '1'; genBtn.style.pointerEvents = 'auto'; genBtn.textContent = '🔗 Generate Link Toko'; }
   } else if (status === 'syncing') {
-    dot.classList.add('fb-syncing');
-    if (text) text.textContent = '🔄 Menyinkronkan data...';
+    if (ind)  { ind.className = 'gs-status gs-connected'; ind.textContent = '🔄 Sync...'; }
   } else {
-    dot.classList.add('fb-disconnected');
-    if (text) text.textContent = fbReady ? '⚡ Offline — akan sync saat online' : 'Firebase belum dikonfigurasi — data tersimpan lokal';
+    // disconnected
+    if (ind)  { ind.className = 'gs-status gs-disconnected'; ind.textContent = fbReady ? '⚡ Offline' : '● Offline'; }
     if (card) { card.textContent = '● Belum Terhubung'; card.style.background = 'rgba(255,77,109,.2)'; card.style.color = 'var(--accent2)'; }
+    if (genBtn) { genBtn.style.opacity = '0.4'; genBtn.style.pointerEvents = 'none'; }
   }
 }
 
@@ -1432,6 +1504,19 @@ function renderSettings() {
     if(el('fb-dbUrl')) el('fb-dbUrl').value = fbCfg.databaseURL || '';
     if(el('fb-projectId')) el('fb-projectId').value = fbCfg.projectId || '';
   }
+  // Show/hide generate link button & status
+  const genBtn = document.getElementById('gen-link-btn');
+  if (genBtn) {
+    if (fbReady) {
+      genBtn.style.opacity = '1';
+      genBtn.style.pointerEvents = 'auto';
+      genBtn.textContent = '🔗 Generate Link Toko';
+    } else {
+      genBtn.style.opacity = '0.4';
+      genBtn.style.pointerEvents = 'none';
+      genBtn.textContent = '🔗 Generate Link (Hubungkan Firebase dulu)';
+    }
+  }
   document.getElementById('low-stock-val').value = state.lowStockThreshold;
 
   // Apps Script code
@@ -1453,17 +1538,7 @@ function renderSettings() {
     `).join('');
   }
 
-  // Firebase Indicator in header
-  const ind = document.getElementById('gs-indicator');
-  if (ind) {
-    if (fbReady) {
-      ind.className = 'gs-status gs-connected';
-      ind.textContent = '🔥 Live';
-    } else {
-      ind.className = 'gs-status gs-disconnected';
-      ind.textContent = '● Local';
-    }
-  }
+  // Header indicator is managed by setFbStatus() — no duplicate update needed
   // Render user list (only visible to admin)
   renderUserList();
 }
@@ -1661,8 +1736,11 @@ function bootAuth() {
   }
   if (!localStorage.getItem('invtrack_users')) saveUsers(users);
 
-  // Auto-init Firebase if config saved
-  const fbCfg = getFbConfig();
+  // Check if URL contains embedded config (share link)
+  const urlCfg = checkUrlConfig();
+
+  // Auto-init Firebase: URL config takes priority, else use saved config
+  const fbCfg = urlCfg || getFbConfig();
   if (fbCfg && fbCfg.apiKey) {
     initFirebase(fbCfg);
   }
