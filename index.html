@@ -5,6 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
 <title>InvTrack — Inventory System</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jsbarcode/3.11.5/JsBarcode.all.min.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-database-compat.js"></script>
 <link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
 <style>
   :root {
@@ -483,6 +485,50 @@
     color: var(--text2);
   }
   .empty-state svg { margin-bottom: 12px; opacity: .4; }
+
+  /* ── FIREBASE STATUS ─────────────────────────── */
+  .fb-status-bar {
+    display: flex; align-items: center; gap: 8px;
+    padding: 8px 20px;
+    background: var(--surface2);
+    border-bottom: 1px solid var(--border);
+    font-size: 11px; font-weight: 700;
+    font-family: 'Space Mono', monospace;
+  }
+  .fb-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+  .fb-connected { background: var(--accent); box-shadow: 0 0 6px var(--accent); }
+  .fb-disconnected { background: var(--accent2); }
+  .fb-syncing { background: #ffd166; animation: pulse 1s infinite; }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.4} }
+  .fb-setup-card { border-color: #ff9500; background: rgba(255,149,0,.06); }
+  .fb-step {
+    display: flex; gap: 12px; align-items: flex-start;
+    padding: 10px 0; border-bottom: 1px solid var(--border);
+  }
+  .fb-step:last-child { border-bottom: none; }
+  .fb-step-num {
+    width: 24px; height: 24px; border-radius: 50%;
+    background: #ff9500; color: #000;
+    display: flex; align-items: center; justify-content: center;
+    font-weight: 800; font-size: 12px; flex-shrink: 0; margin-top: 1px;
+  }
+  .fb-step-body { flex: 1; }
+  .fb-step-title { font-weight: 700; font-size: 13px; margin-bottom: 3px; }
+  .fb-step-desc { font-size: 11px; color: var(--text2); line-height: 1.6; }
+  .fb-step-desc a { color: #ff9500; }
+  .copy-box {
+    background: var(--bg); border: 1px solid var(--border);
+    border-radius: 6px; padding: 8px 10px;
+    font-family: 'Space Mono', monospace; font-size: 11px;
+    color: var(--text2); margin-top: 6px;
+    display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  }
+  .copy-box span { flex: 1; word-break: break-all; }
+  .copy-box button {
+    background: var(--surface2); border: 1px solid var(--border);
+    color: var(--text); border-radius: 4px; padding: 3px 8px;
+    font-size: 11px; cursor: pointer; white-space: nowrap;
+  }
 </style>
 </head>
 <body>
@@ -567,6 +613,13 @@
     Pengaturan
   </button>
 </nav>
+
+<!-- Firebase Status Bar -->
+<div class="fb-status-bar" id="fb-status-bar">
+  <div class="fb-dot fb-disconnected" id="fb-dot"></div>
+  <span id="fb-status-text">Firebase belum dikonfigurasi — data tersimpan lokal</span>
+  <span style="margin-left:auto;color:var(--text2);cursor:pointer;" onclick="showPanel('settings',document.querySelector('nav button:nth-child(5)'))">Setup →</span>
+</div>
 
 <!-- ══ DASHBOARD ══ -->
 <div id="panel-dash" class="panel active">
@@ -702,27 +755,70 @@
 <!-- ══ SETTINGS ══ -->
 <div id="panel-settings" class="panel">
 
-  <!-- Google Sheets Config -->
-  <div class="card setup-card">
-    <div class="card-title" style="color:var(--accent3)">🔗 Google Sheets Integration</div>
-    <p style="font-size:12px;color:var(--text2);margin-bottom:12px;">Isi Google Apps Script Web App URL untuk auto-sync data ke Google Sheets Anda.</p>
-    <label>Apps Script URL</label>
-    <input id="gs-url" type="url" placeholder="https://script.google.com/macros/s/.../exec">
-    <label>Sheet Name</label>
-    <input id="gs-sheet" type="text" placeholder="Inventory" value="Inventory">
-    <label>Spreadsheet ID (opsional)</label>
-    <input id="gs-id" type="text" placeholder="Dari URL spreadsheet Google">
-    <button class="btn btn-primary" onclick="saveGSConfig()">💾 Simpan Konfigurasi</button>
-    <div style="margin-top:10px;font-size:11px;color:var(--text2);">
-      <strong style="color:var(--accent3)">Cara setup:</strong><br>
-      1. Buka Google Sheets → Extensions → Apps Script<br>
-      2. Paste kode Apps Script di bawah → Deploy → Web App<br>
-      3. Copy URL deploy → paste di atas
+  <!-- Firebase Setup Card -->
+  <div class="card fb-setup-card" id="fb-setup-card">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px;">
+      <div class="card-title" style="color:#ff9500;margin-bottom:0;">🔥 Firebase Sync</div>
+      <span id="fb-card-status" style="font-size:11px;font-weight:700;padding:3px 10px;border-radius:20px;background:rgba(255,77,109,.2);color:var(--accent2);">● Belum Terhubung</span>
     </div>
-    <details style="margin-top:10px;">
-      <summary style="cursor:pointer;font-size:12px;color:var(--accent3);font-weight:700;">Lihat Kode Apps Script →</summary>
-      <pre id="apps-script-code" style="margin-top:10px;background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:12px;font-size:10px;overflow-x:auto;color:var(--text2);white-space:pre-wrap;"></pre>
-      <button class="btn btn-outline" style="margin-top:8px;" onclick="copyScript()">📋 Copy Kode</button>
+    <p style="font-size:12px;color:var(--text2);margin-bottom:16px;">Sinkronisasi real-time antar semua perangkat. Ikuti langkah berikut:</p>
+
+    <div class="fb-step">
+      <div class="fb-step-num">1</div>
+      <div class="fb-step-body">
+        <div class="fb-step-title">Buat akun Firebase (gratis)</div>
+        <div class="fb-step-desc">Buka <a href="https://console.firebase.google.com" target="_blank">console.firebase.google.com</a> → login dengan Google → klik <strong>+ Add project</strong> → beri nama (misal: "invtrack") → klik Continue sampai selesai.</div>
+      </div>
+    </div>
+
+    <div class="fb-step">
+      <div class="fb-step-num">2</div>
+      <div class="fb-step-body">
+        <div class="fb-step-title">Aktifkan Realtime Database</div>
+        <div class="fb-step-desc">Di sidebar kiri → klik <strong>Build → Realtime Database</strong> → klik <strong>Create database</strong> → pilih lokasi terdekat (misal Singapore) → pilih <strong>"Start in test mode"</strong> → klik Enable.</div>
+      </div>
+    </div>
+
+    <div class="fb-step">
+      <div class="fb-step-num">3</div>
+      <div class="fb-step-body">
+        <div class="fb-step-title">Ambil konfigurasi app</div>
+        <div class="fb-step-desc">Di sidebar → <strong>Project Settings</strong> (ikon gear) → scroll ke bawah → klik ikon <strong>&lt;/&gt;</strong> (Web) → beri nama app → klik Register. Copy nilai <strong>firebaseConfig</strong> yang muncul.</div>
+      </div>
+    </div>
+
+    <div class="fb-step">
+      <div class="fb-step-num">4</div>
+      <div class="fb-step-body">
+        <div class="fb-step-title">Isi konfigurasi di bawah ini</div>
+        <div class="fb-step-desc">Paste nilai dari firebaseConfig ke kolom masing-masing di bawah.</div>
+      </div>
+    </div>
+
+    <div style="margin-top:4px;">
+      <label>API Key <span style="color:var(--accent2)">*</span></label>
+      <input id="fb-apiKey" type="text" placeholder="AIzaSy...">
+      <label>Auth Domain <span style="color:var(--accent2)">*</span></label>
+      <input id="fb-authDomain" type="text" placeholder="yourapp.firebaseapp.com">
+      <label>Database URL <span style="color:var(--accent2)">*</span></label>
+      <input id="fb-dbUrl" type="text" placeholder="https://yourapp-default-rtdb.firebaseio.com">
+      <label>Project ID <span style="color:var(--accent2)">*</span></label>
+      <input id="fb-projectId" type="text" placeholder="yourapp-12345">
+      <div style="display:flex;gap:8px;">
+        <button class="btn btn-primary" style="flex:1" onclick="saveFbConfig()">🔥 Sambungkan Firebase</button>
+        <button class="btn btn-outline" style="flex:1" onclick="testFbConnection()">🧪 Test Koneksi</button>
+      </div>
+      <div id="fb-connect-msg" style="margin-top:8px;font-size:12px;display:none;padding:8px 10px;border-radius:8px;"></div>
+    </div>
+
+    <details style="margin-top:12px;">
+      <summary style="cursor:pointer;font-size:12px;color:#ff9500;font-weight:700;">⚙️ Aturan Keamanan Database →</summary>
+      <div style="font-size:11px;color:var(--text2);margin-top:8px;margin-bottom:6px;">Paste aturan ini di Firebase Console → Realtime Database → Rules:</div>
+      <div class="copy-box">
+        <span id="fb-rules-text">{ "rules": { ".read": true, ".write": true } }</span>
+        <button onclick="copyText('fb-rules-text')">Copy</button>
+      </div>
+      <div style="font-size:11px;color:var(--text2);margin-top:6px;">⚠️ Aturan "test mode" ini aman untuk internal. Untuk produksi, gunakan Firebase Authentication.</div>
     </details>
   </div>
 
@@ -814,6 +910,7 @@ let state = {
 let scanStream = null;
 let scanInterval = null;
 
+// ── Local persistence ──
 function loadState() {
   try {
     const saved = localStorage.getItem('invtrack_state');
@@ -822,6 +919,181 @@ function loadState() {
 }
 function saveState() {
   localStorage.setItem('invtrack_state', JSON.stringify(state));
+  // Also push to Firebase if connected
+  if (fbReady) fbPushState();
+}
+
+// ── Firebase state ──
+let fbApp = null;
+let fbDb  = null;
+let fbReady = false;
+let fbListening = false;
+
+function getFbConfig() {
+  try { return JSON.parse(localStorage.getItem('invtrack_fb_config') || 'null'); } catch(e) { return null; }
+}
+function saveFbConfig() {
+  const cfg = {
+    apiKey:      (document.getElementById('fb-apiKey').value || '').trim(),
+    authDomain:  (document.getElementById('fb-authDomain').value || '').trim(),
+    databaseURL: (document.getElementById('fb-dbUrl').value || '').trim(),
+    projectId:   (document.getElementById('fb-projectId').value || '').trim(),
+  };
+  if (!cfg.apiKey || !cfg.databaseURL || !cfg.projectId) {
+    showFbMsg('error', '❌ API Key, Database URL, dan Project ID wajib diisi!'); return;
+  }
+  localStorage.setItem('invtrack_fb_config', JSON.stringify(cfg));
+  showFbMsg('info', '⏳ Menghubungkan...');
+  initFirebase(cfg);
+}
+
+function initFirebase(cfg) {
+  try {
+    // Terminate old app if exists
+    if (fbApp) {
+      try { fbApp.delete(); } catch(e) {}
+      fbApp = null; fbDb = null; fbReady = false; fbListening = false;
+    }
+    fbApp = firebase.initializeApp(cfg, 'invtrack_' + Date.now());
+    fbDb  = firebase.database(fbApp);
+
+    // Test connection with a small ping
+    const connRef = fbDb.ref('.info/connected');
+    connRef.on('value', snap => {
+      if (snap.val() === true) {
+        fbReady = true;
+        setFbStatus('connected');
+        if (!fbListening) startFbListeners();
+        showFbMsg('success', '✅ Firebase terhubung! Data akan sync otomatis.');
+      } else {
+        fbReady = false;
+        setFbStatus('disconnected');
+      }
+    });
+  } catch(err) {
+    setFbStatus('disconnected');
+    showFbMsg('error', '❌ Gagal: ' + err.message);
+  }
+}
+
+function testFbConnection() {
+  const cfg = {
+    apiKey:      (document.getElementById('fb-apiKey').value || '').trim(),
+    authDomain:  (document.getElementById('fb-authDomain').value || '').trim(),
+    databaseURL: (document.getElementById('fb-dbUrl').value || '').trim(),
+    projectId:   (document.getElementById('fb-projectId').value || '').trim(),
+  };
+  if (!cfg.databaseURL) { showFbMsg('error', '❌ Isi Database URL dulu!'); return; }
+  showFbMsg('info', '⏳ Testing...');
+  initFirebase(cfg);
+}
+
+function setFbStatus(status) {
+  const dot  = document.getElementById('fb-dot');
+  const text = document.getElementById('fb-status-text');
+  const card = document.getElementById('fb-card-status');
+  const bar  = document.getElementById('fb-status-bar');
+  if (!dot) return;
+  dot.className = 'fb-dot';
+  if (status === 'connected') {
+    dot.classList.add('fb-connected');
+    if (text) text.textContent = '🔥 Firebase terhubung — sync real-time aktif';
+    if (card) { card.textContent = '● Terhubung'; card.style.background = 'rgba(0,229,160,.2)'; card.style.color = 'var(--accent)'; }
+    if (bar) bar.style.borderBottom = '1px solid rgba(0,229,160,.3)';
+  } else if (status === 'syncing') {
+    dot.classList.add('fb-syncing');
+    if (text) text.textContent = '🔄 Menyinkronkan data...';
+  } else {
+    dot.classList.add('fb-disconnected');
+    if (text) text.textContent = fbReady ? '⚡ Offline — akan sync saat online' : 'Firebase belum dikonfigurasi — data tersimpan lokal';
+    if (card) { card.textContent = '● Belum Terhubung'; card.style.background = 'rgba(255,77,109,.2)'; card.style.color = 'var(--accent2)'; }
+  }
+}
+
+function showFbMsg(type, msg) {
+  const el = document.getElementById('fb-connect-msg');
+  if (!el) return;
+  el.style.display = 'block';
+  el.textContent = msg;
+  if (type === 'success') { el.style.background = 'rgba(0,229,160,.15)'; el.style.color = 'var(--accent)'; el.style.border = '1px solid rgba(0,229,160,.3)'; }
+  else if (type === 'error') { el.style.background = 'rgba(255,77,109,.15)'; el.style.color = 'var(--accent2)'; el.style.border = '1px solid rgba(255,77,109,.3)'; }
+  else { el.style.background = 'rgba(77,121,255,.15)'; el.style.color = 'var(--accent3)'; el.style.border = '1px solid rgba(77,121,255,.3)'; }
+}
+
+// ── Push full state to Firebase ──
+function fbPushState() {
+  if (!fbDb || !fbReady) return;
+  setFbStatus('syncing');
+  const payload = {
+    transactions: state.transactions,
+    customFields: state.customFields,
+    lowStockThreshold: state.lowStockThreshold,
+    updatedAt: Date.now()
+  };
+  fbDb.ref('invtrack/state').set(payload)
+    .then(() => setFbStatus('connected'))
+    .catch(e => { console.warn('FB push error:', e); setFbStatus('disconnected'); });
+}
+
+// ── Push users to Firebase ──
+function fbPushUsers(users) {
+  if (!fbDb || !fbReady) return;
+  fbDb.ref('invtrack/users').set(users).catch(e => console.warn('FB users push error:', e));
+}
+
+// ── Listen for changes from other devices ──
+function startFbListeners() {
+  if (!fbDb || fbListening) return;
+  fbListening = true;
+
+  // Listen to inventory state
+  fbDb.ref('invtrack/state').on('value', snap => {
+    const remote = snap.val();
+    if (!remote) {
+      // First device — push local state to Firebase
+      fbPushState();
+      return;
+    }
+    // Merge: keep local changes if newer
+    const localTs = state.lastUpdatedAt || 0;
+    const remoteTs = remote.updatedAt || 0;
+    if (remoteTs > localTs) {
+      state.transactions   = remote.transactions   || [];
+      state.customFields   = remote.customFields   || state.customFields;
+      state.lowStockThreshold = remote.lowStockThreshold ?? state.lowStockThreshold;
+      state.lastUpdatedAt  = remoteTs;
+      // Save locally too
+      localStorage.setItem('invtrack_state', JSON.stringify(state));
+      // Re-render current view
+      renderDashboard();
+      renderTransactions();
+      renderInventory();
+      renderCustomFieldsInTx();
+    }
+  });
+
+  // Listen to users — sync across devices
+  fbDb.ref('invtrack/users').on('value', snap => {
+    const remoteUsers = snap.val();
+    if (!remoteUsers || !Array.isArray(remoteUsers)) {
+      // First time — push local users
+      fbPushUsers(getUsers());
+      return;
+    }
+    // Merge users: remote wins (admin made changes on another device)
+    const localUsers = getUsers();
+    // Only update if remote has more or different users
+    if (JSON.stringify(remoteUsers) !== JSON.stringify(localUsers)) {
+      localStorage.setItem('invtrack_users', JSON.stringify(remoteUsers));
+      renderUserList();
+    }
+  });
+}
+
+function copyText(elId) {
+  const el = document.getElementById(elId);
+  if (!el) return;
+  navigator.clipboard.writeText(el.textContent).then(() => toast('✓ Disalin!')).catch(() => toast('Gagal salin'));
 }
 
 // ═══════════════════════════════════════════════════
@@ -945,6 +1217,7 @@ function addTransaction() {
   };
 
   state.transactions.unshift(tx);
+  state.lastUpdatedAt = Date.now();
   saveState();
   renderDashboard();
   renderTransactions();
@@ -1150,10 +1423,15 @@ function renderCustomFieldsInTx() {
 }
 
 function renderSettings() {
-  // GS config
-  document.getElementById('gs-url').value = state.gsConfig.url || '';
-  document.getElementById('gs-sheet').value = state.gsConfig.sheet || 'Inventory';
-  document.getElementById('gs-id').value = state.gsConfig.id || '';
+  // Firebase config
+  const fbCfg = getFbConfig();
+  if (fbCfg) {
+    const el = (id) => document.getElementById(id);
+    if(el('fb-apiKey')) el('fb-apiKey').value = fbCfg.apiKey || '';
+    if(el('fb-authDomain')) el('fb-authDomain').value = fbCfg.authDomain || '';
+    if(el('fb-dbUrl')) el('fb-dbUrl').value = fbCfg.databaseURL || '';
+    if(el('fb-projectId')) el('fb-projectId').value = fbCfg.projectId || '';
+  }
   document.getElementById('low-stock-val').value = state.lowStockThreshold;
 
   // Apps Script code
@@ -1175,27 +1453,22 @@ function renderSettings() {
     `).join('');
   }
 
-  // GS Indicator
+  // Firebase Indicator in header
   const ind = document.getElementById('gs-indicator');
-  if (state.gsConfig.url) {
-    ind.className = 'gs-status gs-connected';
-    ind.textContent = '● Sheets';
-  } else {
-    ind.className = 'gs-status gs-disconnected';
-    ind.textContent = '● Offline';
+  if (ind) {
+    if (fbReady) {
+      ind.className = 'gs-status gs-connected';
+      ind.textContent = '🔥 Live';
+    } else {
+      ind.className = 'gs-status gs-disconnected';
+      ind.textContent = '● Local';
+    }
   }
   // Render user list (only visible to admin)
   renderUserList();
 }
 
-function saveGSConfig() {
-  state.gsConfig.url = document.getElementById('gs-url').value.trim();
-  state.gsConfig.sheet = document.getElementById('gs-sheet').value.trim() || 'Inventory';
-  state.gsConfig.id = document.getElementById('gs-id').value.trim();
-  saveState();
-  renderSettings();
-  toast('✓ Konfigurasi Google Sheets disimpan!');
-}
+// saveGSConfig replaced by Firebase
 
 function saveLowStock() {
   state.lowStockThreshold = parseInt(document.getElementById('low-stock-val').value) || 5;
@@ -1207,99 +1480,32 @@ function saveLowStock() {
 //  GOOGLE SHEETS SYNC
 // ═══════════════════════════════════════════════════
 async function syncToSheets() {
-  if (!state.gsConfig.url) {
-    toast('❌ Atur URL Google Sheets di Pengaturan!');
+  // Manual force-sync to Firebase
+  const btn = document.querySelector('.sync-btn');
+  if (!fbReady) {
+    toast('❌ Firebase belum terhubung! Cek Pengaturan.');
     showPanel('settings', document.querySelector('nav button:nth-child(5)'));
     return;
   }
-  const btn = document.querySelector('.sync-btn');
   btn.disabled = true;
   btn.textContent = '⏳ Sync...';
-
-  const inv = getInventory();
-  const payload = {
-    sheet: state.gsConfig.sheet,
-    action: 'sync',
-    transactions: state.transactions.slice(0, 500),
-    inventory: Object.values(inv),
-    customFields: state.customFields.map(f => f.name)
-  };
-
   try {
-    const res = await fetch(state.gsConfig.url, {
-      method: 'POST',
-      mode: 'no-cors',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload)
+    await new Promise((resolve, reject) => {
+      const payload = {
+        transactions: state.transactions,
+        customFields: state.customFields,
+        lowStockThreshold: state.lowStockThreshold,
+        updatedAt: Date.now()
+      };
+      fbDb.ref('invtrack/state').set(payload).then(resolve).catch(reject);
     });
-    toast('✓ Data dikirim ke Google Sheets!');
+    toast('✅ Data berhasil disinkronkan!');
   } catch(e) {
     toast('❌ Gagal sync: ' + e.message);
   } finally {
     btn.disabled = false;
     btn.textContent = '⬆ Sync';
   }
-}
-
-// ═══════════════════════════════════════════════════
-//  APPS SCRIPT GENERATOR
-// ═══════════════════════════════════════════════════
-function generateAppsScript() {
-  return `// Google Apps Script — InvTrack Integration
-// Deploy: Extensions → Apps Script → Deploy → New Deployment → Web App
-// Execute as: Me, Who has access: Anyone
-
-function doPost(e) {
-  try {
-    const data = JSON.parse(e.postData.contents);
-    const ss = SpreadsheetApp.getActiveSpreadsheet();
-    
-    // ── TRANSACTIONS SHEET ──
-    let txSheet = ss.getSheetByName('Transactions') || ss.insertSheet('Transactions');
-    if (txSheet.getLastRow() === 0) {
-      const customHeaders = data.customFields || [];
-      txSheet.appendRow(['ID','Tanggal','Barcode','Nama Item','Tipe','Qty','Lokasi Rak','Catatan',...customHeaders,'Created At']);
-    }
-    data.transactions.forEach(tx => {
-      const exists = findRow(txSheet, tx.id);
-      const row = [tx.id,tx.date,tx.barcode,tx.name,tx.type,tx.qty,tx.rack,tx.note];
-      (data.customFields||[]).forEach(f => row.push(tx.customData?.[f]||''));
-      row.push(tx.createdAt);
-      if (!exists) txSheet.appendRow(row);
-    });
-
-    // ── INVENTORY SHEET ──
-    let invSheet = ss.getSheetByName(data.sheet||'Inventory') || ss.insertSheet(data.sheet||'Inventory');
-    invSheet.clearContents();
-    const customH = data.customFields || [];
-    invSheet.appendRow(['Barcode','Nama Item','Stok','Lokasi Rak','Update Terakhir',...customH]);
-    data.inventory.forEach(item => {
-      const row = [item.barcode,item.name,item.qty,item.rack,item.lastDate];
-      customH.forEach(f => row.push(item.customData?.[f]||''));
-      invSheet.appendRow(row);
-    });
-
-    // Formatting
-    invSheet.getRange(1,1,1,invSheet.getLastColumn()).setBackground('#1a1a2e').setFontColor('#00e5a0').setFontWeight('bold');
-    
-    return ContentService.createTextOutput(JSON.stringify({success:true})).setMimeType(ContentService.MimeType.JSON);
-  } catch(err) {
-    return ContentService.createTextOutput(JSON.stringify({error:err.toString()})).setMimeType(ContentService.MimeType.JSON);
-  }
-}
-
-function findRow(sheet, id) {
-  if (sheet.getLastRow() < 2) return null;
-  const col = sheet.getRange(2, 1, sheet.getLastRow()-1, 1).getValues();
-  for (let i=0; i<col.length; i++) {
-    if (col[i][0] == id) return i+2;
-  }
-  return null;
-}
-
-function doGet(e) {
-  return ContentService.createTextOutput('InvTrack API active').setMimeType(ContentService.MimeType.TEXT);
-}`;
 }
 
 function copyScript() {
@@ -1340,6 +1546,7 @@ function importData(e) {
       const data = JSON.parse(ev.target.result);
       if (data.transactions) {
         Object.assign(state, data);
+        state.lastUpdatedAt = Date.now();
         saveState();
         renderDashboard();
         renderSettings();
@@ -1355,7 +1562,16 @@ function importData(e) {
 function clearAllData() {
   if (!confirm('Hapus SEMUA data? Tindakan ini tidak bisa dibatalkan!')) return;
   state.transactions = [];
+  state.lastUpdatedAt = Date.now();
   saveState();
+  if (fbDb && fbReady) {
+    fbDb.ref('invtrack/state').set({
+      transactions: [],
+      customFields: state.customFields,
+      lowStockThreshold: state.lowStockThreshold,
+      updatedAt: Date.now()
+    });
+  }
   renderDashboard();
   renderTransactions();
   renderInventory();
@@ -1405,6 +1621,7 @@ function getUsers() {
 
 function saveUsers(users) {
   localStorage.setItem('invtrack_users', JSON.stringify(users));
+  if (fbReady) fbPushUsers(users);
 }
 
 function getSession() {
@@ -1442,15 +1659,19 @@ function bootAuth() {
     users.push({ id: '1', username: 'admin', passwordHash: hashPassword('admin123'), role: 'admin', createdAt: new Date().toISOString() });
     saveUsers(users);
   }
-  // First time: init users
   if (!localStorage.getItem('invtrack_users')) saveUsers(users);
+
+  // Auto-init Firebase if config saved
+  const fbCfg = getFbConfig();
+  if (fbCfg && fbCfg.apiKey) {
+    initFirebase(fbCfg);
+  }
 
   const attempts = getAttempts();
   if (attempts.lockUntil > Date.now()) {
     showLockout(attempts.lockUntil);
     return;
   }
-
   const session = getSession();
   if (session) {
     showApp(session);
@@ -1738,4 +1959,3 @@ bootAuth();
 </div><!-- end app-shell -->
 </body>
 </html>
-
