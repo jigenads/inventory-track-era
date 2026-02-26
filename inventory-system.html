@@ -1,0 +1,1198 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>InvTrack — Inventory System</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jsbarcode/3.11.5/JsBarcode.all.min.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0a0a0f;
+    --surface: #13131a;
+    --surface2: #1c1c28;
+    --border: #2a2a3d;
+    --accent: #00e5a0;
+    --accent2: #ff4d6d;
+    --accent3: #4d79ff;
+    --text: #e8e8f0;
+    --text2: #8888aa;
+    --in-color: #00e5a0;
+    --out-color: #ff4d6d;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Syne', sans-serif;
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  /* ── TOP BAR ─────────────────────────── */
+  header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 16px 20px;
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    position: sticky; top: 0; z-index: 100;
+  }
+  .logo { font-size: 22px; font-weight: 800; letter-spacing: -1px; }
+  .logo span { color: var(--accent); }
+  .sync-btn {
+    background: var(--accent);
+    color: #000;
+    border: none;
+    border-radius: 8px;
+    padding: 8px 16px;
+    font-family: 'Syne', sans-serif;
+    font-weight: 700;
+    font-size: 13px;
+    cursor: pointer;
+    transition: opacity .2s;
+  }
+  .sync-btn:hover { opacity: .85; }
+  .sync-btn:disabled { opacity: .4; cursor: not-allowed; }
+
+  /* ── NAV TABS ─────────────────────────── */
+  nav {
+    display: flex;
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    overflow-x: auto;
+  }
+  nav button {
+    flex: 1; min-width: 80px;
+    padding: 13px 8px;
+    background: none; border: none;
+    color: var(--text2);
+    font-family: 'Syne', sans-serif;
+    font-weight: 600;
+    font-size: 12px;
+    cursor: pointer;
+    border-bottom: 2px solid transparent;
+    transition: all .2s;
+    white-space: nowrap;
+  }
+  nav button.active {
+    color: var(--accent);
+    border-bottom-color: var(--accent);
+  }
+  nav button svg { display: block; margin: 0 auto 4px; }
+
+  /* ── PANELS ─────────────────────────── */
+  .panel { display: none; padding: 16px; }
+  .panel.active { display: block; }
+
+  /* ── CARDS & FORMS ─────────────────────────── */
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 16px;
+    margin-bottom: 14px;
+  }
+  .card-title {
+    font-size: 13px;
+    font-weight: 700;
+    letter-spacing: .08em;
+    text-transform: uppercase;
+    color: var(--text2);
+    margin-bottom: 14px;
+  }
+  label { font-size: 12px; color: var(--text2); font-weight: 600; display: block; margin-bottom: 5px; }
+  input, select, textarea {
+    width: 100%;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    color: var(--text);
+    padding: 10px 12px;
+    font-family: 'Space Mono', monospace;
+    font-size: 13px;
+    margin-bottom: 12px;
+    transition: border-color .2s;
+  }
+  input:focus, select:focus, textarea:focus {
+    outline: none;
+    border-color: var(--accent);
+  }
+  select option { background: var(--surface2); }
+  .row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .row3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; }
+  .btn {
+    width: 100%;
+    padding: 13px;
+    border: none;
+    border-radius: 10px;
+    font-family: 'Syne', sans-serif;
+    font-weight: 700;
+    font-size: 14px;
+    cursor: pointer;
+    transition: all .2s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+  }
+  .btn-primary { background: var(--accent); color: #000; }
+  .btn-primary:hover { filter: brightness(1.1); }
+  .btn-danger { background: var(--accent2); color: #fff; }
+  .btn-outline {
+    background: transparent;
+    border: 1px solid var(--border);
+    color: var(--text);
+  }
+  .btn-outline:hover { border-color: var(--accent); color: var(--accent); }
+  .btn-sm { width: auto; padding: 6px 12px; font-size: 12px; border-radius: 6px; }
+
+  /* ── SCANNER ─────────────────────────── */
+  .scanner-wrap {
+    position: relative;
+    width: 100%;
+    aspect-ratio: 1;
+    max-height: 280px;
+    border-radius: 12px;
+    overflow: hidden;
+    background: #000;
+    margin-bottom: 12px;
+  }
+  #qr-video { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .scan-overlay {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    pointer-events: none;
+  }
+  .scan-frame {
+    width: 200px;
+    height: 200px;
+    position: relative;
+  }
+  .scan-frame::before, .scan-frame::after,
+  .scan-frame > span::before, .scan-frame > span::after {
+    content: '';
+    position: absolute;
+    width: 28px;
+    height: 28px;
+    border-color: var(--accent);
+    border-style: solid;
+  }
+  .scan-frame::before { top:0; left:0; border-width: 3px 0 0 3px; }
+  .scan-frame::after { top:0; right:0; border-width: 3px 3px 0 0; }
+  .scan-frame > span::before { bottom:0; left:0; border-width: 0 0 3px 3px; }
+  .scan-frame > span::after { bottom:0; right:0; border-width: 0 3px 3px 0; }
+  .scan-line {
+    position: absolute;
+    left: 10px; right: 10px;
+    height: 2px;
+    background: var(--accent);
+    box-shadow: 0 0 8px var(--accent);
+    animation: scanline 2s linear infinite;
+    opacity: .8;
+  }
+  @keyframes scanline {
+    0% { top: 10px; }
+    100% { top: calc(100% - 10px); }
+  }
+  #scan-result {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 10px 12px;
+    font-family: 'Space Mono', monospace;
+    font-size: 13px;
+    min-height: 40px;
+    margin-bottom: 12px;
+    color: var(--accent);
+  }
+
+  /* ── TRANSACTION LIST ─────────────────────────── */
+  .tx-item {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px 0;
+    border-bottom: 1px solid var(--border);
+  }
+  .tx-item:last-child { border-bottom: none; }
+  .tx-badge {
+    width: 40px; height: 40px;
+    border-radius: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 800;
+    font-size: 11px;
+    flex-shrink: 0;
+  }
+  .badge-in { background: rgba(0,229,160,.15); color: var(--in-color); }
+  .badge-out { background: rgba(255,77,109,.15); color: var(--out-color); }
+  .tx-info { flex: 1; min-width: 0; }
+  .tx-name { font-weight: 700; font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .tx-meta { font-size: 11px; color: var(--text2); font-family: 'Space Mono', monospace; margin-top: 2px; }
+  .tx-qty { font-weight: 800; font-size: 18px; font-family: 'Space Mono', monospace; }
+  .qty-in { color: var(--in-color); }
+  .qty-out { color: var(--out-color); }
+
+  /* ── STATS ─────────────────────────── */
+  .stats-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 14px; }
+  .stat-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 14px;
+  }
+  .stat-val { font-family: 'Space Mono', monospace; font-size: 28px; font-weight: 700; margin-bottom: 4px; }
+  .stat-label { font-size: 11px; color: var(--text2); font-weight: 600; text-transform: uppercase; letter-spacing: .05em; }
+
+  /* ── SHEET CONFIG ─────────────────────────── */
+  .field-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 8px;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 8px 10px;
+  }
+  .field-row input { margin-bottom: 0; background: transparent; border: none; padding: 0; flex:1; }
+  .field-row input:focus { border: none; }
+  .drag-handle { cursor: grab; color: var(--text2); font-size: 16px; }
+  .del-field { background: none; border: none; color: var(--accent2); cursor: pointer; font-size: 18px; line-height: 1; }
+
+  /* ── INVENTORY TABLE ─────────────────────────── */
+  .inv-table-wrap { overflow-x: auto; }
+  table { width: 100%; border-collapse: collapse; font-size: 12px; }
+  th {
+    background: var(--bg);
+    padding: 10px 8px;
+    text-align: left;
+    color: var(--text2);
+    font-family: 'Space Mono', monospace;
+    font-weight: 700;
+    font-size: 11px;
+    letter-spacing: .05em;
+    white-space: nowrap;
+    border-bottom: 2px solid var(--border);
+  }
+  td {
+    padding: 10px 8px;
+    border-bottom: 1px solid var(--border);
+    font-family: 'Space Mono', monospace;
+    font-size: 12px;
+    white-space: nowrap;
+  }
+  tr:hover td { background: var(--surface2); }
+  .qty-low { color: var(--accent2); font-weight: 700; }
+  .barcode-cell svg { height: 28px; }
+
+  /* ── TOAST ─────────────────────────── */
+  .toast {
+    position: fixed;
+    bottom: 24px; left: 50%; transform: translateX(-50%);
+    background: var(--surface);
+    border: 1px solid var(--accent);
+    border-radius: 10px;
+    padding: 12px 20px;
+    font-size: 13px;
+    font-weight: 600;
+    z-index: 999;
+    opacity: 0;
+    transition: opacity .3s;
+    pointer-events: none;
+    white-space: nowrap;
+    color: var(--accent);
+  }
+  .toast.show { opacity: 1; }
+
+  /* ── MODAL ─────────────────────────── */
+  .modal-bg {
+    position: fixed; inset: 0;
+    background: rgba(0,0,0,.75);
+    z-index: 200;
+    display: flex;
+    align-items: flex-end;
+  }
+  .modal-bg.hidden { display: none; }
+  .modal {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 20px 20px 0 0;
+    padding: 20px;
+    width: 100%;
+    max-height: 90vh;
+    overflow-y: auto;
+  }
+  .modal-title { font-size: 18px; font-weight: 800; margin-bottom: 16px; }
+
+  /* ── GOOGLE SHEETS SETUP ─────────────────────────── */
+  .setup-card {
+    border: 1px solid var(--accent3);
+    background: rgba(77,121,255,.08);
+  }
+  .gs-status { font-size: 12px; font-weight: 700; padding: 4px 10px; border-radius: 20px; display: inline-flex; align-items: center; gap: 5px; }
+  .gs-connected { background: rgba(0,229,160,.2); color: var(--accent); }
+  .gs-disconnected { background: rgba(255,77,109,.2); color: var(--accent2); }
+
+  /* scroll */
+  ::-webkit-scrollbar { width: 4px; height: 4px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+
+  .chip {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 20px;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: .04em;
+  }
+  .chip-in { background: rgba(0,229,160,.2); color: var(--in-color); }
+  .chip-out { background: rgba(255,77,109,.2); color: var(--out-color); }
+  .empty-state {
+    text-align: center;
+    padding: 40px 20px;
+    color: var(--text2);
+  }
+  .empty-state svg { margin-bottom: 12px; opacity: .4; }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">INV<span>TRACK</span></div>
+  <div style="display:flex;gap:8px;align-items:center;">
+    <span id="gs-indicator" class="gs-status gs-disconnected">● Offline</span>
+    <button class="sync-btn" onclick="syncToSheets()">⬆ Sync</button>
+  </div>
+</header>
+
+<nav>
+  <button class="active" onclick="showPanel('dash',this)">
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" w="7" h="7"/><rect x="14" y="3" w="7" h="7"/><rect x="3" y="14" w="7" h="7"/><rect x="14" y="14" w="7" h="7"/></svg>
+    Dashboard
+  </button>
+  <button onclick="showPanel('scan',this)">
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 7V5a2 2 0 012-2h2M17 3h2a2 2 0 012 2v2M21 17v2a2 2 0 01-2 2h-2M7 21H5a2 2 0 01-2-2v-2M7 12h10"/></svg>
+    Scan
+  </button>
+  <button onclick="showPanel('transaksi',this)">
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/></svg>
+    Transaksi
+  </button>
+  <button onclick="showPanel('inventori',this)">
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 7H4a2 2 0 00-2 2v10a2 2 0 002 2h16a2 2 0 002-2V9a2 2 0 00-2-2z"/><path d="M16 7V5a2 2 0 00-2-2h-4a2 2 0 00-2 2v2"/></svg>
+    Inventori
+  </button>
+  <button onclick="showPanel('settings',this)">
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.07 4.93l-1.41 1.41M4.93 4.93l1.41 1.41M4.93 19.07l1.41-1.41M19.07 19.07l-1.41-1.41M21 12h-3M6 12H3M12 21v-3M12 6V3"/></svg>
+    Pengaturan
+  </button>
+</nav>
+
+<!-- ══ DASHBOARD ══ -->
+<div id="panel-dash" class="panel active">
+  <div class="stats-grid">
+    <div class="stat-card">
+      <div class="stat-val" id="stat-total">0</div>
+      <div class="stat-label">Total Item</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-val" id="stat-in" style="color:var(--in-color)">0</div>
+      <div class="stat-label">Masuk Hari Ini</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-val" id="stat-out" style="color:var(--out-color)">0</div>
+      <div class="stat-label">Keluar Hari Ini</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-val" id="stat-low" style="color:#ffd166">0</div>
+      <div class="stat-label">Stok Rendah</div>
+    </div>
+  </div>
+  <div class="card">
+    <div class="card-title">Aktivitas Terkini</div>
+    <div id="recent-list"><div class="empty-state">Belum ada transaksi.</div></div>
+  </div>
+</div>
+
+<!-- ══ SCAN ══ -->
+<div id="panel-scan" class="panel">
+  <div class="card">
+    <div class="card-title">Scanner Barcode / QR</div>
+    <div class="scanner-wrap">
+      <video id="qr-video" autoplay playsinline muted></video>
+      <div class="scan-overlay">
+        <div class="scan-frame">
+          <span></span>
+          <div class="scan-line"></div>
+        </div>
+      </div>
+    </div>
+    <div id="scan-result">Arahkan kamera ke barcode...</div>
+    <div style="display:flex;gap:8px;margin-bottom:12px;">
+      <button class="btn btn-primary" style="flex:1" onclick="startScan()">▶ Mulai Scan</button>
+      <button class="btn btn-outline" style="flex:1" onclick="stopScan()">■ Stop</button>
+    </div>
+    <div style="text-align:center;margin-bottom:12px;color:var(--text2);font-size:12px;">— atau masukkan manual —</div>
+    <input id="manual-barcode" type="text" placeholder="Ketik barcode..." style="margin-bottom:8px;">
+    <button class="btn btn-outline" onclick="processManualBarcode()">Proses Barcode</button>
+  </div>
+</div>
+
+<!-- ══ TRANSAKSI ══ -->
+<div id="panel-transaksi" class="panel">
+  <div class="card">
+    <div class="card-title">Input Transaksi</div>
+    <label>Barcode / Kode Item</label>
+    <div style="display:flex;gap:8px;margin-bottom:12px;">
+      <input id="tx-barcode" type="text" placeholder="Scan atau ketik barcode..." style="margin-bottom:0;flex:1;">
+      <button class="btn btn-outline btn-sm" onclick="showPanel('scan',document.querySelector('nav button:nth-child(2)'))">📷</button>
+    </div>
+    <label>Nama Item</label>
+    <input id="tx-name" type="text" placeholder="Nama produk...">
+    <div class="row2">
+      <div>
+        <label>Tipe</label>
+        <select id="tx-type">
+          <option value="IN">📥 MASUK</option>
+          <option value="OUT">📤 KELUAR</option>
+        </select>
+      </div>
+      <div>
+        <label>Qty</label>
+        <input id="tx-qty" type="number" value="1" min="1">
+      </div>
+    </div>
+    <div class="row2">
+      <div>
+        <label>Lokasi Rak</label>
+        <input id="tx-rack" type="text" placeholder="A1, B2...">
+      </div>
+      <div>
+        <label>Tanggal</label>
+        <input id="tx-date" type="date">
+      </div>
+    </div>
+    <!-- Dynamic custom fields -->
+    <div id="custom-fields-tx"></div>
+    <label>Catatan</label>
+    <textarea id="tx-note" rows="2" placeholder="Keterangan tambahan..." style="resize:vertical;"></textarea>
+    <button class="btn btn-primary" onclick="addTransaction()">✓ Simpan Transaksi</button>
+  </div>
+
+  <div class="card">
+    <div class="card-title">Riwayat Transaksi</div>
+    <div style="display:flex;gap:8px;margin-bottom:12px;">
+      <input id="tx-search" type="text" placeholder="Cari..." style="margin-bottom:0;flex:1;" oninput="renderTransactions()">
+      <select id="tx-filter" style="margin-bottom:0;width:auto;" onchange="renderTransactions()">
+        <option value="">Semua</option>
+        <option value="IN">Masuk</option>
+        <option value="OUT">Keluar</option>
+      </select>
+    </div>
+    <div id="tx-list"></div>
+  </div>
+</div>
+
+<!-- ══ INVENTORI ══ -->
+<div id="panel-inventori" class="panel">
+  <div class="card">
+    <div class="card-title">Stok Inventori</div>
+    <input id="inv-search" type="text" placeholder="Cari item..." style="margin-bottom:10px;" oninput="renderInventory()">
+    <div class="inv-table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Barcode</th>
+            <th>Nama</th>
+            <th>Stok</th>
+            <th>Rak</th>
+            <th>Update</th>
+            <th id="custom-th"></th>
+          </tr>
+        </thead>
+        <tbody id="inv-body"></tbody>
+      </table>
+    </div>
+  </div>
+  <div class="card" style="text-align:center;">
+    <button class="btn btn-outline" onclick="exportCSV()">⬇ Export CSV</button>
+  </div>
+</div>
+
+<!-- ══ SETTINGS ══ -->
+<div id="panel-settings" class="panel">
+
+  <!-- Google Sheets Config -->
+  <div class="card setup-card">
+    <div class="card-title" style="color:var(--accent3)">🔗 Google Sheets Integration</div>
+    <p style="font-size:12px;color:var(--text2);margin-bottom:12px;">Isi Google Apps Script Web App URL untuk auto-sync data ke Google Sheets Anda.</p>
+    <label>Apps Script URL</label>
+    <input id="gs-url" type="url" placeholder="https://script.google.com/macros/s/.../exec">
+    <label>Sheet Name</label>
+    <input id="gs-sheet" type="text" placeholder="Inventory" value="Inventory">
+    <label>Spreadsheet ID (opsional)</label>
+    <input id="gs-id" type="text" placeholder="Dari URL spreadsheet Google">
+    <button class="btn btn-primary" onclick="saveGSConfig()">💾 Simpan Konfigurasi</button>
+    <div style="margin-top:10px;font-size:11px;color:var(--text2);">
+      <strong style="color:var(--accent3)">Cara setup:</strong><br>
+      1. Buka Google Sheets → Extensions → Apps Script<br>
+      2. Paste kode Apps Script di bawah → Deploy → Web App<br>
+      3. Copy URL deploy → paste di atas
+    </div>
+    <details style="margin-top:10px;">
+      <summary style="cursor:pointer;font-size:12px;color:var(--accent3);font-weight:700;">Lihat Kode Apps Script →</summary>
+      <pre id="apps-script-code" style="margin-top:10px;background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:12px;font-size:10px;overflow-x:auto;color:var(--text2);white-space:pre-wrap;"></pre>
+      <button class="btn btn-outline" style="margin-top:8px;" onclick="copyScript()">📋 Copy Kode</button>
+    </details>
+  </div>
+
+  <!-- Custom Fields -->
+  <div class="card">
+    <div class="card-title">📝 Custom Fields Data Sheet</div>
+    <p style="font-size:12px;color:var(--text2);margin-bottom:12px;">Tambahkan kolom data sesuai kebutuhan bisnis Anda.</p>
+    <div id="custom-fields-list"></div>
+    <div style="display:flex;gap:8px;margin-bottom:12px;">
+      <input id="new-field-name" type="text" placeholder="Nama field baru..." style="margin-bottom:0;flex:1;">
+      <select id="new-field-type" style="margin-bottom:0;width:auto;">
+        <option value="text">Text</option>
+        <option value="number">Angka</option>
+        <option value="date">Tanggal</option>
+        <option value="select">Pilihan</option>
+      </select>
+    </div>
+    <button class="btn btn-outline" onclick="addCustomField()">+ Tambah Field</button>
+  </div>
+
+  <!-- Data Management -->
+  <div class="card">
+    <div class="card-title">🗄️ Manajemen Data</div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;">
+      <button class="btn btn-outline btn-sm" onclick="exportData()">⬇ Backup JSON</button>
+      <button class="btn btn-outline btn-sm" onclick="importDataClick()">⬆ Restore JSON</button>
+      <button class="btn btn-danger btn-sm" onclick="clearAllData()">🗑 Reset Data</button>
+    </div>
+    <input type="file" id="import-file" accept=".json" style="display:none" onchange="importData(event)">
+  </div>
+
+  <!-- Low Stock Threshold -->
+  <div class="card">
+    <div class="card-title">⚠️ Pengaturan Stok</div>
+    <label>Batas Stok Rendah</label>
+    <input id="low-stock-val" type="number" value="5" min="0">
+    <button class="btn btn-outline" onclick="saveLowStock()">Simpan</button>
+  </div>
+</div>
+
+<!-- Toast -->
+<div id="toast" class="toast"></div>
+
+<!-- Item Detail Modal -->
+<div id="item-modal" class="modal-bg hidden">
+  <div class="modal">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
+      <div class="modal-title" id="modal-title">Detail Item</div>
+      <button onclick="closeModal()" style="background:none;border:none;color:var(--text2);font-size:22px;cursor:pointer;">✕</button>
+    </div>
+    <div id="modal-body"></div>
+  </div>
+</div>
+
+<script>
+// ═══════════════════════════════════════════════════
+//  STATE
+// ═══════════════════════════════════════════════════
+let state = {
+  transactions: [],
+  customFields: [],
+  gsConfig: { url: '', sheet: 'Inventory', id: '' },
+  lowStockThreshold: 5,
+  scannerActive: false
+};
+
+let scanStream = null;
+let scanInterval = null;
+
+function loadState() {
+  try {
+    const saved = localStorage.getItem('invtrack_state');
+    if (saved) Object.assign(state, JSON.parse(saved));
+  } catch(e) {}
+}
+function saveState() {
+  localStorage.setItem('invtrack_state', JSON.stringify(state));
+}
+
+// ═══════════════════════════════════════════════════
+//  NAVIGATION
+// ═══════════════════════════════════════════════════
+function showPanel(id, btn) {
+  document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('nav button').forEach(b => b.classList.remove('active'));
+  document.getElementById('panel-' + id).classList.add('active');
+  if (btn) btn.classList.add('active');
+  if (id === 'dash') renderDashboard();
+  if (id === 'transaksi') renderTransactions();
+  if (id === 'inventori') renderInventory();
+  if (id === 'settings') renderSettings();
+  if (id !== 'scan') stopScan();
+}
+
+// ═══════════════════════════════════════════════════
+//  BARCODE SCANNER
+// ═══════════════════════════════════════════════════
+async function startScan() {
+  try {
+    const constraints = {
+      video: {
+        facingMode: 'environment',
+        width: { ideal: 1280 },
+        height: { ideal: 720 }
+      }
+    };
+    scanStream = await navigator.mediaDevices.getUserMedia(constraints);
+    const video = document.getElementById('qr-video');
+    video.srcObject = scanStream;
+    state.scannerActive = true;
+
+    // Use BarcodeDetector if available (Android Chrome)
+    if ('BarcodeDetector' in window) {
+      const detector = new BarcodeDetector({ formats: ['qr_code','ean_13','ean_8','code_128','code_39','upc_a','upc_e','itf','data_matrix'] });
+      scanInterval = setInterval(async () => {
+        try {
+          const codes = await detector.detect(video);
+          if (codes.length > 0) {
+            const val = codes[0].rawValue;
+            handleScanResult(val);
+          }
+        } catch(e) {}
+      }, 400);
+      toast('Kamera aktif — BarcodeDetector siap!');
+    } else {
+      // Fallback: try loading ZXing from CDN
+      toast('Kamera aktif. BarcodeDetector tidak tersedia di browser ini.');
+      document.getElementById('scan-result').textContent = 'Kamera aktif. Gunakan input manual atau browser Chrome Android untuk scan otomatis.';
+    }
+  } catch(e) {
+    toast('❌ Gagal akses kamera: ' + e.message);
+  }
+}
+
+function stopScan() {
+  if (scanStream) {
+    scanStream.getTracks().forEach(t => t.stop());
+    scanStream = null;
+  }
+  if (scanInterval) { clearInterval(scanInterval); scanInterval = null; }
+  const video = document.getElementById('qr-video');
+  if (video) video.srcObject = null;
+  state.scannerActive = false;
+}
+
+function handleScanResult(val) {
+  document.getElementById('scan-result').textContent = '✓ ' + val;
+  // Autofill transaksi
+  document.getElementById('tx-barcode').value = val;
+  document.getElementById('manual-barcode').value = val;
+  // Find existing item
+  const inv = getInventory();
+  if (inv[val]) {
+    document.getElementById('tx-name').value = inv[val].name;
+    document.getElementById('tx-rack').value = inv[val].rack || '';
+  }
+  toast('Barcode: ' + val);
+}
+
+function processManualBarcode() {
+  const val = document.getElementById('manual-barcode').value.trim();
+  if (!val) return;
+  handleScanResult(val);
+}
+
+// ═══════════════════════════════════════════════════
+//  TRANSACTIONS
+// ═══════════════════════════════════════════════════
+function addTransaction() {
+  const barcode = document.getElementById('tx-barcode').value.trim();
+  const name = document.getElementById('tx-name').value.trim();
+  const type = document.getElementById('tx-type').value;
+  const qty = parseInt(document.getElementById('tx-qty').value) || 0;
+  const rack = document.getElementById('tx-rack').value.trim();
+  const date = document.getElementById('tx-date').value || today();
+  const note = document.getElementById('tx-note').value.trim();
+
+  if (!barcode || !name || qty < 1) {
+    toast('❌ Isi Barcode, Nama, dan Qty!'); return;
+  }
+
+  const customData = {};
+  state.customFields.forEach(f => {
+    const el = document.getElementById('cf_tx_' + f.id);
+    if (el) customData[f.name] = el.value;
+  });
+
+  const tx = {
+    id: Date.now().toString(),
+    barcode, name, type, qty, rack, date, note,
+    customData,
+    createdAt: new Date().toISOString()
+  };
+
+  state.transactions.unshift(tx);
+  saveState();
+  renderDashboard();
+  renderTransactions();
+  toast('✓ Transaksi ' + (type === 'IN' ? 'MASUK' : 'KELUAR') + ' disimpan!');
+
+  // Clear
+  document.getElementById('tx-barcode').value = '';
+  document.getElementById('tx-name').value = '';
+  document.getElementById('tx-qty').value = '1';
+  document.getElementById('tx-rack').value = '';
+  document.getElementById('tx-note').value = '';
+}
+
+function getInventory() {
+  const inv = {};
+  // Process oldest first
+  [...state.transactions].reverse().forEach(tx => {
+    if (!inv[tx.barcode]) {
+      inv[tx.barcode] = { name: tx.name, barcode: tx.barcode, qty: 0, rack: tx.rack, lastDate: tx.date, customData: tx.customData || {} };
+    }
+    inv[tx.barcode].qty += (tx.type === 'IN' ? tx.qty : -tx.qty);
+    inv[tx.barcode].qty = Math.max(0, inv[tx.barcode].qty);
+    inv[tx.barcode].rack = tx.rack || inv[tx.barcode].rack;
+    inv[tx.barcode].lastDate = tx.date;
+    inv[tx.barcode].customData = { ...inv[tx.barcode].customData, ...(tx.customData || {}) };
+  });
+  return inv;
+}
+
+function renderTransactions() {
+  const search = (document.getElementById('tx-search').value || '').toLowerCase();
+  const filter = document.getElementById('tx-filter').value;
+  const list = document.getElementById('tx-list');
+  let txs = state.transactions.filter(tx => {
+    const matchType = !filter || tx.type === filter;
+    const matchSearch = !search || tx.name.toLowerCase().includes(search) || tx.barcode.includes(search);
+    return matchType && matchSearch;
+  });
+
+  if (!txs.length) {
+    list.innerHTML = '<div class="empty-state"><svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2"/><rect x="9" y="3" width="6" height="4" rx="2"/></svg><div>Belum ada transaksi</div></div>';
+    return;
+  }
+
+  list.innerHTML = txs.slice(0,50).map(tx => `
+    <div class="tx-item">
+      <div class="tx-badge ${tx.type === 'IN' ? 'badge-in' : 'badge-out'}">${tx.type}</div>
+      <div class="tx-info">
+        <div class="tx-name">${esc(tx.name)}</div>
+        <div class="tx-meta">${tx.barcode} · ${tx.rack || '—'} · ${tx.date}</div>
+      </div>
+      <div class="tx-qty ${tx.type === 'IN' ? 'qty-in' : 'qty-out'}">${tx.type === 'IN' ? '+' : '-'}${tx.qty}</div>
+    </div>
+  `).join('');
+}
+
+// ═══════════════════════════════════════════════════
+//  INVENTORY
+// ═══════════════════════════════════════════════════
+function renderInventory() {
+  const search = (document.getElementById('inv-search').value || '').toLowerCase();
+  const inv = getInventory();
+  const items = Object.values(inv).filter(i =>
+    !search || i.name.toLowerCase().includes(search) || i.barcode.includes(search)
+  );
+
+  const tbody = document.getElementById('inv-body');
+  if (!items.length) {
+    tbody.innerHTML = `<tr><td colspan="10" class="empty-state" style="text-align:center;padding:30px;color:var(--text2)">Inventori kosong</td></tr>`;
+    return;
+  }
+
+  tbody.innerHTML = items.map(item => {
+    const low = item.qty <= state.lowStockThreshold;
+    const customCells = state.customFields.map(f => `<td>${esc(item.customData?.[f.name] || '—')}</td>`).join('');
+    return `
+      <tr onclick="showItemDetail('${item.barcode}')" style="cursor:pointer;">
+        <td style="font-family:'Space Mono',monospace;font-size:10px;">${esc(item.barcode)}</td>
+        <td>${esc(item.name)}</td>
+        <td class="${low ? 'qty-low' : ''}">${item.qty}${low ? ' ⚠' : ''}</td>
+        <td>${esc(item.rack || '—')}</td>
+        <td>${item.lastDate}</td>
+        ${customCells}
+      </tr>`;
+  }).join('');
+}
+
+function showItemDetail(barcode) {
+  const inv = getInventory();
+  const item = inv[barcode];
+  if (!item) return;
+
+  // Generate barcode SVG
+  const svgId = 'bc_' + Date.now();
+  document.getElementById('modal-title').textContent = item.name;
+  document.getElementById('modal-body').innerHTML = `
+    <div style="text-align:center;margin-bottom:16px;">
+      <svg id="${svgId}"></svg>
+      <div style="font-family:'Space Mono',monospace;font-size:11px;color:var(--text2);margin-top:4px;">${esc(item.barcode)}</div>
+    </div>
+    <div class="row2" style="margin-bottom:12px;">
+      <div class="stat-card"><div class="stat-val">${item.qty}</div><div class="stat-label">Stok</div></div>
+      <div class="stat-card"><div class="stat-val" style="font-size:16px;">${esc(item.rack||'—')}</div><div class="stat-label">Rak</div></div>
+    </div>
+    <div style="font-size:12px;color:var(--text2);margin-bottom:4px;">Update terakhir: ${item.lastDate}</div>
+    ${state.customFields.map(f => `<div style="margin-bottom:6px;"><span style="font-size:11px;color:var(--text2)">${esc(f.name)}:</span> <span style="font-family:'Space Mono',monospace;font-size:13px;">${esc(item.customData?.[f.name]||'—')}</span></div>`).join('')}
+    <div style="margin-top:16px;">
+      <button class="btn btn-primary" onclick="quickTx('${barcode}','IN')">+ Stok Masuk</button>
+      <button class="btn btn-outline" style="margin-top:8px;" onclick="quickTx('${barcode}','OUT')">- Stok Keluar</button>
+    </div>
+  `;
+  document.getElementById('item-modal').classList.remove('hidden');
+
+  setTimeout(() => {
+    try {
+      JsBarcode('#' + svgId, barcode, { format: 'CODE128', width: 2, height: 50, displayValue: false, background: 'transparent', lineColor: '#e8e8f0' });
+    } catch(e) {}
+  }, 50);
+}
+
+function quickTx(barcode, type) {
+  const inv = getInventory();
+  const item = inv[barcode];
+  document.getElementById('tx-barcode').value = barcode;
+  document.getElementById('tx-name').value = item?.name || '';
+  document.getElementById('tx-rack').value = item?.rack || '';
+  document.getElementById('tx-type').value = type;
+  document.getElementById('tx-date').value = today();
+  closeModal();
+  showPanel('transaksi', document.querySelector('nav button:nth-child(3)'));
+}
+
+function closeModal() {
+  document.getElementById('item-modal').classList.add('hidden');
+}
+
+// ═══════════════════════════════════════════════════
+//  DASHBOARD
+// ═══════════════════════════════════════════════════
+function renderDashboard() {
+  const inv = getInventory();
+  const todayStr = today();
+  const items = Object.values(inv);
+  const todayTxs = state.transactions.filter(t => t.date === todayStr);
+
+  document.getElementById('stat-total').textContent = items.length;
+  document.getElementById('stat-in').textContent = todayTxs.filter(t=>t.type==='IN').reduce((s,t)=>s+t.qty,0);
+  document.getElementById('stat-out').textContent = todayTxs.filter(t=>t.type==='OUT').reduce((s,t)=>s+t.qty,0);
+  document.getElementById('stat-low').textContent = items.filter(i=>i.qty<=state.lowStockThreshold).length;
+
+  const recent = state.transactions.slice(0,5);
+  const list = document.getElementById('recent-list');
+  if (!recent.length) {
+    list.innerHTML = '<div class="empty-state">Belum ada aktivitas.</div>';
+    return;
+  }
+  list.innerHTML = recent.map(tx => `
+    <div class="tx-item">
+      <div class="tx-badge ${tx.type==='IN'?'badge-in':'badge-out'}">${tx.type}</div>
+      <div class="tx-info">
+        <div class="tx-name">${esc(tx.name)}</div>
+        <div class="tx-meta">${tx.barcode} · ${tx.rack||'—'} · ${tx.date}</div>
+      </div>
+      <div class="tx-qty ${tx.type==='IN'?'qty-in':'qty-out'}">${tx.type==='IN'?'+':'-'}${tx.qty}</div>
+    </div>
+  `).join('');
+}
+
+// ═══════════════════════════════════════════════════
+//  CUSTOM FIELDS
+// ═══════════════════════════════════════════════════
+function addCustomField() {
+  const name = document.getElementById('new-field-name').value.trim();
+  const type = document.getElementById('new-field-type').value;
+  if (!name) { toast('Masukkan nama field!'); return; }
+  if (state.customFields.find(f => f.name === name)) { toast('Field sudah ada!'); return; }
+  state.customFields.push({ id: Date.now().toString(), name, type });
+  document.getElementById('new-field-name').value = '';
+  saveState();
+  renderSettings();
+  renderCustomFieldsInTx();
+  toast('✓ Field "' + name + '" ditambahkan!');
+}
+
+function removeCustomField(id) {
+  state.customFields = state.customFields.filter(f => f.id !== id);
+  saveState();
+  renderSettings();
+  renderCustomFieldsInTx();
+}
+
+function renderCustomFieldsInTx() {
+  const wrap = document.getElementById('custom-fields-tx');
+  wrap.innerHTML = state.customFields.map(f => `
+    <div>
+      <label>${esc(f.name)}</label>
+      <input id="cf_tx_${f.id}" type="${f.type === 'select' ? 'text' : f.type}" placeholder="${esc(f.name)}...">
+    </div>
+  `).join('');
+  // Update inventory table header
+  const th = document.getElementById('custom-th');
+  if (th) th.textContent = state.customFields.map(f=>f.name).join(' / ');
+}
+
+function renderSettings() {
+  // GS config
+  document.getElementById('gs-url').value = state.gsConfig.url || '';
+  document.getElementById('gs-sheet').value = state.gsConfig.sheet || 'Inventory';
+  document.getElementById('gs-id').value = state.gsConfig.id || '';
+  document.getElementById('low-stock-val').value = state.lowStockThreshold;
+
+  // Apps Script code
+  const script = generateAppsScript();
+  document.getElementById('apps-script-code').textContent = script;
+
+  // Custom fields list
+  const list = document.getElementById('custom-fields-list');
+  if (!state.customFields.length) {
+    list.innerHTML = '<div style="font-size:12px;color:var(--text2);margin-bottom:12px;">Belum ada custom field.</div>';
+  } else {
+    list.innerHTML = state.customFields.map(f => `
+      <div class="field-row">
+        <span class="drag-handle">⠿</span>
+        <span style="font-size:13px;font-weight:700;flex:1;">${esc(f.name)}</span>
+        <span style="font-size:11px;color:var(--text2);font-family:'Space Mono',monospace;">${f.type}</span>
+        <button class="del-field" onclick="removeCustomField('${f.id}')">×</button>
+      </div>
+    `).join('');
+  }
+
+  // GS Indicator
+  const ind = document.getElementById('gs-indicator');
+  if (state.gsConfig.url) {
+    ind.className = 'gs-status gs-connected';
+    ind.textContent = '● Sheets';
+  } else {
+    ind.className = 'gs-status gs-disconnected';
+    ind.textContent = '● Offline';
+  }
+}
+
+function saveGSConfig() {
+  state.gsConfig.url = document.getElementById('gs-url').value.trim();
+  state.gsConfig.sheet = document.getElementById('gs-sheet').value.trim() || 'Inventory';
+  state.gsConfig.id = document.getElementById('gs-id').value.trim();
+  saveState();
+  renderSettings();
+  toast('✓ Konfigurasi Google Sheets disimpan!');
+}
+
+function saveLowStock() {
+  state.lowStockThreshold = parseInt(document.getElementById('low-stock-val').value) || 5;
+  saveState();
+  toast('✓ Batas stok rendah: ' + state.lowStockThreshold);
+}
+
+// ═══════════════════════════════════════════════════
+//  GOOGLE SHEETS SYNC
+// ═══════════════════════════════════════════════════
+async function syncToSheets() {
+  if (!state.gsConfig.url) {
+    toast('❌ Atur URL Google Sheets di Pengaturan!');
+    showPanel('settings', document.querySelector('nav button:nth-child(5)'));
+    return;
+  }
+  const btn = document.querySelector('.sync-btn');
+  btn.disabled = true;
+  btn.textContent = '⏳ Sync...';
+
+  const inv = getInventory();
+  const payload = {
+    sheet: state.gsConfig.sheet,
+    action: 'sync',
+    transactions: state.transactions.slice(0, 500),
+    inventory: Object.values(inv),
+    customFields: state.customFields.map(f => f.name)
+  };
+
+  try {
+    const res = await fetch(state.gsConfig.url, {
+      method: 'POST',
+      mode: 'no-cors',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+    toast('✓ Data dikirim ke Google Sheets!');
+  } catch(e) {
+    toast('❌ Gagal sync: ' + e.message);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '⬆ Sync';
+  }
+}
+
+// ═══════════════════════════════════════════════════
+//  APPS SCRIPT GENERATOR
+// ═══════════════════════════════════════════════════
+function generateAppsScript() {
+  return `// Google Apps Script — InvTrack Integration
+// Deploy: Extensions → Apps Script → Deploy → New Deployment → Web App
+// Execute as: Me, Who has access: Anyone
+
+function doPost(e) {
+  try {
+    const data = JSON.parse(e.postData.contents);
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    
+    // ── TRANSACTIONS SHEET ──
+    let txSheet = ss.getSheetByName('Transactions') || ss.insertSheet('Transactions');
+    if (txSheet.getLastRow() === 0) {
+      const customHeaders = data.customFields || [];
+      txSheet.appendRow(['ID','Tanggal','Barcode','Nama Item','Tipe','Qty','Lokasi Rak','Catatan',...customHeaders,'Created At']);
+    }
+    data.transactions.forEach(tx => {
+      const exists = findRow(txSheet, tx.id);
+      const row = [tx.id,tx.date,tx.barcode,tx.name,tx.type,tx.qty,tx.rack,tx.note];
+      (data.customFields||[]).forEach(f => row.push(tx.customData?.[f]||''));
+      row.push(tx.createdAt);
+      if (!exists) txSheet.appendRow(row);
+    });
+
+    // ── INVENTORY SHEET ──
+    let invSheet = ss.getSheetByName(data.sheet||'Inventory') || ss.insertSheet(data.sheet||'Inventory');
+    invSheet.clearContents();
+    const customH = data.customFields || [];
+    invSheet.appendRow(['Barcode','Nama Item','Stok','Lokasi Rak','Update Terakhir',...customH]);
+    data.inventory.forEach(item => {
+      const row = [item.barcode,item.name,item.qty,item.rack,item.lastDate];
+      customH.forEach(f => row.push(item.customData?.[f]||''));
+      invSheet.appendRow(row);
+    });
+
+    // Formatting
+    invSheet.getRange(1,1,1,invSheet.getLastColumn()).setBackground('#1a1a2e').setFontColor('#00e5a0').setFontWeight('bold');
+    
+    return ContentService.createTextOutput(JSON.stringify({success:true})).setMimeType(ContentService.MimeType.JSON);
+  } catch(err) {
+    return ContentService.createTextOutput(JSON.stringify({error:err.toString()})).setMimeType(ContentService.MimeType.JSON);
+  }
+}
+
+function findRow(sheet, id) {
+  if (sheet.getLastRow() < 2) return null;
+  const col = sheet.getRange(2, 1, sheet.getLastRow()-1, 1).getValues();
+  for (let i=0; i<col.length; i++) {
+    if (col[i][0] == id) return i+2;
+  }
+  return null;
+}
+
+function doGet(e) {
+  return ContentService.createTextOutput('InvTrack API active').setMimeType(ContentService.MimeType.TEXT);
+}`;
+}
+
+function copyScript() {
+  const code = document.getElementById('apps-script-code').textContent;
+  navigator.clipboard.writeText(code).then(() => toast('✓ Kode disalin!')).catch(() => toast('Gagal salin'));
+}
+
+// ═══════════════════════════════════════════════════
+//  EXPORT / IMPORT / CSV
+// ═══════════════════════════════════════════════════
+function exportCSV() {
+  const inv = getInventory();
+  const customH = state.customFields.map(f => f.name);
+  const headers = ['Barcode','Nama Item','Stok','Lokasi Rak','Update Terakhir',...customH];
+  const rows = Object.values(inv).map(item => {
+    const row = [item.barcode, item.name, item.qty, item.rack||'', item.lastDate];
+    customH.forEach(f => row.push(item.customData?.[f]||''));
+    return row.map(v => '"' + String(v).replace(/"/g,'""') + '"').join(',');
+  });
+  const csv = [headers.join(','), ...rows].join('\n');
+  download('inventory_' + today() + '.csv', csv, 'text/csv');
+  toast('✓ CSV diunduh!');
+}
+
+function exportData() {
+  const json = JSON.stringify(state, null, 2);
+  download('invtrack_backup_' + today() + '.json', json, 'application/json');
+  toast('✓ Backup berhasil!');
+}
+
+function importDataClick() { document.getElementById('import-file').click(); }
+function importData(e) {
+  const file = e.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = ev => {
+    try {
+      const data = JSON.parse(ev.target.result);
+      if (data.transactions) {
+        Object.assign(state, data);
+        saveState();
+        renderDashboard();
+        renderSettings();
+        renderCustomFieldsInTx();
+        toast('✓ Data berhasil diimpor!');
+      } else { toast('❌ Format file tidak valid!'); }
+    } catch(e) { toast('❌ Error: ' + e.message); }
+  };
+  reader.readAsText(file);
+  e.target.value = '';
+}
+
+function clearAllData() {
+  if (!confirm('Hapus SEMUA data? Tindakan ini tidak bisa dibatalkan!')) return;
+  state.transactions = [];
+  saveState();
+  renderDashboard();
+  renderTransactions();
+  renderInventory();
+  toast('🗑 Data dihapus.');
+}
+
+// ═══════════════════════════════════════════════════
+//  UTILS
+// ═══════════════════════════════════════════════════
+function today() {
+  return new Date().toISOString().slice(0,10);
+}
+function esc(s) {
+  return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+function download(name, content, mime) {
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([content], {type: mime}));
+  a.download = name;
+  a.click();
+  URL.revokeObjectURL(a.href);
+}
+function toast(msg) {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.classList.add('show');
+  clearTimeout(toast._t);
+  toast._t = setTimeout(() => el.classList.remove('show'), 2800);
+}
+
+// ═══════════════════════════════════════════════════
+//  INIT
+// ═══════════════════════════════════════════════════
+loadState();
+document.getElementById('tx-date').value = today();
+renderDashboard();
+renderCustomFieldsInTx();
+renderSettings();
+</script>
+</body>
+</html>
