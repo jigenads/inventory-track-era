@@ -353,7 +353,7 @@
     padding: 24px;
     animation: fadeIn .4s ease;
   }
-  #login-screen.hidden { display: none; }
+  #login-screen.hidden { display: none !important; pointer-events: none !important; }
   @keyframes fadeIn { from { opacity: 0; transform: translateY(16px); } to { opacity: 1; transform: none; } }
   @keyframes shake { 0%,100%{transform:translateX(0)} 20%,60%{transform:translateX(-8px)} 40%,80%{transform:translateX(8px)} }
   .login-logo {
@@ -406,8 +406,7 @@
   .attempt-dot.used { background: var(--accent2); }
 
   /* ── APP SHELL (hidden when logged out) ─────────────────────────── */
-  #app-shell { display: none; }
-  #app-shell.visible { display: block; }
+  /* app-shell visibility is controlled entirely by JS showApp()/showLoginScreen() */
 
   /* ── USER BADGE IN HEADER ─────────────────────────── */
   .user-badge {
@@ -522,7 +521,7 @@
 </div>
 
 <!-- ══ APP SHELL ══ -->
-<div id="app-shell">
+<div id="app-shell" style="display:none">
 
 <header>
   <div class="logo">INV<span>TRACK</span></div>
@@ -829,6 +828,11 @@ function saveState() {
 //  NAVIGATION
 // ═══════════════════════════════════════════════════
 function showPanel(id, btn) {
+  // Staff role guard
+  const _sess = getSession ? getSession() : null;
+  if (id === 'settings' && _sess && _sess.role === 'staff') {
+    toast('⛔ Akses ditolak - hanya Admin!'); return;
+  }
   document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
   document.querySelectorAll('nav button').forEach(b => b.classList.remove('active'));
   document.getElementById('panel-' + id).classList.add('active');
@@ -1180,6 +1184,8 @@ function renderSettings() {
     ind.className = 'gs-status gs-disconnected';
     ind.textContent = '● Offline';
   }
+  // Render user list (only visible to admin)
+  renderUserList();
 }
 
 function saveGSConfig() {
@@ -1381,13 +1387,6 @@ function toast(msg) {
 }
 
 // ═══════════════════════════════════════════════════
-//  INIT
-// ═══════════════════════════════════════════════════
-loadState();
-document.getElementById('tx-date').value = today();
-// Auth boots everything
-bootAuth();
-// ═══════════════════════════════════════════════════
 //  AUTH SYSTEM
 // ═══════════════════════════════════════════════════
 const MAX_ATTEMPTS = 5;
@@ -1462,33 +1461,58 @@ function bootAuth() {
 }
 
 function showLoginScreen() {
-  document.getElementById('login-screen').classList.remove('hidden');
-  document.getElementById('app-shell').style.display = 'none';
-  document.getElementById('lockout-screen').classList.remove('show');
-  setTimeout(() => document.getElementById('login-user').focus(), 100);
+  const loginEl = document.getElementById('login-screen');
+  const appEl   = document.getElementById('app-shell');
+  const lockEl  = document.getElementById('lockout-screen');
+
+  // Remove hidden so login screen is visible again
+  loginEl.classList.remove('hidden');
+  loginEl.style.display = '';   // let CSS/class control it
+
+  // Forcefully hide app
+  appEl.style.setProperty('display', 'none', 'important');
+  lockEl.classList.remove('show');
+  lockEl.style.display = 'none';
+
+  setTimeout(() => {
+    const u = document.getElementById('login-user');
+    if (u) u.focus();
+  }, 150);
 }
 
 function showApp(session) {
-  document.getElementById('login-screen').classList.add('hidden');
-  document.getElementById('lockout-screen').classList.remove('show');
-  document.getElementById('app-shell').style.display = 'block';
+  // Hide login & lockout screens
+  const loginEl = document.getElementById('login-screen');
+  const lockEl  = document.getElementById('lockout-screen');
+  const appEl   = document.getElementById('app-shell');
 
-  // Update header
+  loginEl.classList.add('hidden');
+  loginEl.style.display = 'none';
+  lockEl.classList.remove('show');
+  lockEl.style.display = 'none';
+
+  // Show app - use both class and inline style to be safe
+  appEl.style.setProperty('display', 'block', 'important');
+  appEl.removeAttribute('hidden');
+
+  // Update header user info
   const initial = (session.username || 'U')[0].toUpperCase();
   document.getElementById('header-avatar').textContent = initial;
   document.getElementById('header-username').textContent = session.username;
 
   // Staff role: hide settings tab
   const settingsBtn = document.querySelector('nav button:nth-child(5)');
-  if (session.role === 'staff') {
-    settingsBtn.style.display = 'none';
-  } else {
-    settingsBtn.style.display = '';
+  if (settingsBtn) {
+    settingsBtn.style.display = session.role === 'staff' ? 'none' : '';
   }
 
+  // Re-render all panels
   renderDashboard();
   renderCustomFieldsInTx();
   renderSettings();
+
+  // Scroll to top
+  window.scrollTo(0, 0);
 }
 
 function showLockout(lockUntil) {
@@ -1700,25 +1724,18 @@ function renderUserList() {
   }).join('');
 }
 
-// Override renderSettings to also render user list
-const _origRenderSettings = renderSettings;
-renderSettings = function() {
-  _origRenderSettings();
-  renderUserList();
-};
 
-// ── Protect Staff from Settings ──
-const _origShowPanel = showPanel;
-showPanel = function(id, btn) {
-  const session = getSession();
-  if (id === 'settings' && session?.role === 'staff') {
-    toast('&#x26D4; Akses ditolak - hanya Admin!'); return;
-  }
-  _origShowPanel(id, btn);
-};
+
+// ═══════════════════════════════════════════════════
+//  INIT — runs after ALL functions are declared
+// ═══════════════════════════════════════════════════
+loadState();
+document.getElementById('tx-date').value = today();
+bootAuth();
 
 </script>
 
 </div><!-- end app-shell -->
 </body>
 </html>
+
